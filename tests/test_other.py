@@ -3085,7 +3085,7 @@ int main(int argc, char **argv) {
 
     for wasm in [0, 1]:
       for no_exit in [1, 0]:
-        for opts in [[], ['-O1'], ['-O2', '-g2'], ['-O2', '-g2', '-flto']]:
+        for opts in [[], ['-O1'], ['-O2', '-g2'], ['-O2', '-g2', '-flto'], ['-O2', '-g2', '-flto=thin']]:
           print(wasm, no_exit, opts)
           cmd = [EMCC] + opts + ['code.cpp', '-s', 'EXIT_RUNTIME=' + str(1 - no_exit), '-s', 'WASM=' + str(wasm)]
           if wasm:
@@ -3237,6 +3237,8 @@ Waste<3> *getMore() {
       (['-Os', '-g'], False),
       (['-O2', '-g', '-flto', '-s', 'EXIT_RUNTIME=1'], True),
       (['-O2', '-g', '-flto'], False),
+      (['-O2', '-g', '-flto=thin', '-s', 'EXIT_RUNTIME=1'], True),
+      (['-O2', '-g', '-flto=thin'], False),
     ]:
       print(opts, has_global)
       self.run_process([EMCC, 'main.cpp', '-c'] + opts)
@@ -6698,6 +6700,10 @@ int main() {
     'O3_standalone_narg_flto':
                           ('mem_no_argv.c', ['-O3', '-s', 'STANDALONE_WASM', '-flto'],
                            [], [], 4971),         # noqa
+    # without argc/argv, no support code for them is emitted, even with thinlto
+    'O3_standalone_narg_flto_thin':
+                          ('mem_no_argv.c', ['-O3', '-s', 'STANDALONE_WASM', '-flto=thin'],
+                           [], [], 4971),         # noqa
   })
   def test_metadce_mem(self, filename, *args):
     self.run_metadce_test(filename, *args)
@@ -6896,13 +6902,20 @@ int main() {
       self.assertTrue(building.is_wasm('hello_obj.o'))
       self.assertFalse(building.is_bitcode('hello_obj.o'))
 
-      print('bitcode in object')
+      print('bitcode in object (LTO)')
       self.run_process([EMXX, src] + args + ['-c', '-o', 'hello_bitcode.o', '-flto'])
+      self.assertFalse(building.is_wasm('hello_bitcode.o'))
+      self.assertTrue(building.is_bitcode('hello_bitcode.o'))
+      print('bitcode in object (ThinLTO)')
+      self.run_process([EMXX, src] + args + ['-c', '-o', 'hello_bitcode.o', '-flto=thin'])
       self.assertFalse(building.is_wasm('hello_bitcode.o'))
       self.assertTrue(building.is_bitcode('hello_bitcode.o'))
 
       print('use bitcode object (LTO)')
       self.run_process([EMXX, 'hello_bitcode.o'] + args + ['-flto'])
+      self.assertContained('hello, world!', self.run_js('a.out.js'))
+      print('use bitcode object (ThinLTO)')
+      self.run_process([EMXX, 'hello_bitcode.o'] + args + ['-flto=thin'])
       self.assertContained('hello, world!', self.run_js('a.out.js'))
       print('use bitcode object (non-LTO)')
       self.run_process([EMXX, 'hello_bitcode.o'] + args)
@@ -6910,6 +6923,9 @@ int main() {
 
       print('use native object (LTO)')
       self.run_process([EMXX, 'hello_obj.o'] + args + ['-flto'])
+      self.assertContained('hello, world!', self.run_js('a.out.js'))
+      print('use native object (ThinLTO)')
+      self.run_process([EMXX, 'hello_obj.o'] + args + ['-flto=thin'])
       self.assertContained('hello, world!', self.run_js('a.out.js'))
       print('use native object (non-LTO)')
       self.run_process([EMXX, 'hello_obj.o'] + args)
@@ -6921,6 +6937,13 @@ int main() {
   })
   def test_wasm_backend_lto_libcxx(self, *args):
     self.run_process([EMXX, path_from_root('tests', 'hello_libcxx.cpp'), '-flto'] + list(args))
+
+  @parameterized({
+    'except': [],
+    'noexcept': ['-s', 'DISABLE_EXCEPTION_CATCHING=0']
+  })
+  def test_wasm_backend_thin_lto_libcxx(self, *args):
+    self.run_process([EMXX, path_from_root('tests', 'hello_libcxx.cpp'), '-flto=thin'] + list(args))
 
   def test_lto_flags(self):
     for flags, expect_bitcode in [

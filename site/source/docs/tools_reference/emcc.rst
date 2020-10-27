@@ -200,6 +200,11 @@ Options that are modified or new in *emcc* are listed below:
 ``-flto``
   Enables link-time optimizations (LTO).
 
+.. _emcc-thin-lto:
+
+``-flto=thin``
+  Enables thin link-time optimizations (ThinLTO).
+
 .. _emcc-closure:
 
 ``--closure <on>``
